@@ -126,6 +126,26 @@ jobs:
           echo "--- 扩展清单 ---"
           docker run --rm ${IMAGE_NAME}:${PHP_VERSION} php -m
 
+      - name: 冒烟测试（容器能否稳定常驻）
+        run: |
+          set -eu
+          docker rm -f smoke >/dev/null 2>&1 || true
+          docker run -d --name smoke -v /tmp:/tmp ${IMAGE_NAME}:${PHP_VERSION}
+          sleep 8
+          STATUS=$(docker inspect -f '{{.State.Status}}' smoke)
+          echo "容器状态: $STATUS"
+          if [ "$STATUS" != "running" ]; then
+            echo "::error::容器未能常驻（状态 $STATUS），常见原因是 php-fpm daemonize 未关闭导致主进程退出"
+            docker logs smoke 2>&1 | tail -20
+            exit 1
+          fi
+          echo "--- socket 是否生成 ---"
+          docker exec smoke ls -l /tmp/php-cgi-74.sock
+          echo "--- FPM 进程 ---"
+          docker exec smoke ps aux 2>/dev/null | grep -c '[p]hp-fpm' || true
+          docker rm -f smoke >/dev/null 2>&1 || true
+          echo "冒烟测试通过"
+
       - name: 登录 ghcr.io
         if: github.event.inputs.push_image != 'false'
         uses: docker/login-action@v3

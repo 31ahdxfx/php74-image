@@ -157,4 +157,6 @@ WORKDIR /www/wwwroot
 
 EXPOSE 9000
 
-CMD ["php-fpm"]
+# -F 强制前台运行，与 zz-www.conf 里的 daemonize = no 形成双保险。
+# 只靠配置容易在某些情况下失效（例如配置文件被覆盖），-F 是最后一道保险。
+CMD ["php-fpm", "-F"]
