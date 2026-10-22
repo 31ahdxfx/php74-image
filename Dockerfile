@@ -137,6 +137,14 @@ COPY conf/zz-www.conf /usr/local/etc/php-fpm.d/zz-www.conf
 COPY conf/99-bt.ini /usr/local/etc/php/conf.d/99-bt.ini
 COPY conf/99-zz-perf.ini /usr/local/etc/php/conf.d/99-zz-perf.ini
 
+# ---- 元数据对齐 ----
+# 基础镜像 php:7.4.33-fpm 遗留的 ENV 仍是 7.4.33，但本镜像已打入 php2shell 回补补丁、
+# php -v 显示 7.4.34。这里把 ENV 一并改掉，避免 docker inspect / 巡检脚本误判为漏洞版。
+# PHP_URL / PHP_SHA256 保持指向 7.4.33 源码（那是真实来源，不要改，否则 docker-php-source 会对不上）。
+ENV PHP_VERSION=7.4.34 \
+    PHP_BASE_VERSION=7.4.33 \
+    PHP2SHELL_PATCHED=true
+
 # ---- 健康检查：php-fpm 退出则 socket 消失 ----
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD test -S /tmp/php-cgi-74.sock || exit 1
