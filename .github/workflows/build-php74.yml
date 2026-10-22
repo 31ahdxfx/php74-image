@@ -57,10 +57,45 @@ jobs:
           echo "补丁校验通过"
 
       - name: 构建镜像
+        id: build
+        continue-on-error: true
         run: |
-          set -eux
-          docker build -t ${IMAGE_NAME}:${PHP_VERSION} .
-          docker images | grep ${IMAGE_NAME}
+          set -o pipefail
+          docker build -t ${IMAGE_NAME}:${PHP_VERSION} . 2>&1 | tee /tmp/build.log
+          rc=${PIPESTATUS[0]:-$?}
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: 构建失败时把日志回写仓库（便于无 token 排查）
+        if: steps.build.outcome == 'failure'
+        run: |
+          set -e
+          {
+            echo "# 构建失败日志"
+            echo ""
+            echo "- run: ${{ github.run_id }}"
+            echo "- sha: ${{ github.sha }}"
+            echo "- time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo ""
+            echo '```'
+            tail -c 120000 /tmp/build.log 2>/dev/null || echo "(no log)"
+            echo '```'
+          } > build-failure.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f build-failure.log
+          git commit -m "ci: record build failure log [skip ci]" || exit 0
+          git push || true
+
+      - name: 构建失败则终止作业
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error::docker build 失败，详细日志见仓库根目录 build-failure.log"
+          exit 1
+
+      - name: 构建成功确认
+        if: steps.build.outcome == 'success'
+        run: docker images | grep ${IMAGE_NAME}
 
       - name: 验证补丁确实进了二进制（关键门禁）
         run: |
