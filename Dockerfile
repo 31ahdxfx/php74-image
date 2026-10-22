@@ -103,14 +103,26 @@ RUN set -eux; \
         bcmath exif gd gettext intl mysqli opcache \
         pcntl pdo_mysql soap sockets sysvsem shmop zip
 
-# ---- redis：宝塔 7.4 环境几乎必装，固定 5.3.7（兼容 PHP 7.0–8.2）----
-# phpredis 的 configure 会交互式询问 igbinary/lzf/zstd/msgpack 等可选依赖，
-# 非 TTY 环境下会读 stdin 挂住或报错 —— 用 yes '' 喂空行，全部取默认值(no)。
+# ---- redis：从源码编译 ----
+# pecl installer 在 CI 环境里报 `No releases available for package "pecl.php.net/redis"`
+# （pecl.php.net 已不稳定/包索引不可用），因此跳过 pecl，直接用 GitHub release tarball 编译。
+# phpredis 的 configure 会交互式询问 igbinary/lzf/zstd/msgpack，用 yes '' 喂空行全取默认值(no)。
 RUN set -eux; \
-    yes '' | pecl install redis-5.3.7; \
+    curl -fsSL --retry 3 --retry-delay 2 --max-time 120 \
+        https://github.com/phpredis/phpredis/archive/refs/tags/5.3.7.tar.gz \
+        -o /tmp/redis.tar.gz; \
+    mkdir -p /tmp/redis-src; \
+    tar -xzf /tmp/redis.tar.gz -C /tmp/redis-src --strip-components=1; \
+    cd /tmp/redis-src; \
+    phpize; \
+    ./configure --with-php-config=/usr/local/bin/php-config; \
+    make -j"$(nproc)"; \
+    make install; \
     docker-php-ext-enable redis; \
     php -m | grep -i '^redis$'; \
-    rm -rf /tmp/pear
+    cd /; \
+    rm -rf /tmp/redis-src /tmp/redis.tar.gz; \
+    php -r 'echo "redis ext version: ", phpversion("redis") ?: "NOT LOADED", PHP_EOL;'
 
 # ---- 清理解压出来的源码树（保留 php.tar.xz，后续仍可 docker-php-ext-install 补装扩展）----
 RUN docker-php-source delete
