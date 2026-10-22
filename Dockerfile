@@ -96,12 +96,14 @@ RUN set -eux; \
     rm -f /tmp/7.4-cve-2026-109618-109619.patch; \
     php -v
 
-# ---- 宝塔 7.4 常用扩展（与 8.2 那台保持同一集合，另加 exif/opcache/redis）----
+# ---- 宝塔 7.4 常用扩展（与 8.2 那台保持同一集合，另加 exif/opcache/redis/xmlrpc）----
+# xmlrpc：目标机 47.84.19.196 的宝塔 php74 带此扩展（PHP 7.4 已把它移出默认编译集），
+#         少它会让用到 xmlrpc_encode 之类函数的站点直接报 undefined function。
 RUN set -eux; \
     docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp; \
     docker-php-ext-install -j"$(nproc)" \
         bcmath exif gd gettext intl mysqli opcache \
-        pcntl pdo_mysql soap sockets sysvsem shmop zip
+        pcntl pdo_mysql soap sockets sysvsem shmop xmlrpc zip
 
 # ---- redis：从源码编译 ----
 # pecl installer 在 CI 环境里报 `No releases available for package "pecl.php.net/redis"`
