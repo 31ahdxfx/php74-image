@@ -57,9 +57,6 @@ RUN set -eux; \
     grep -q "zend_mm_safe_error_ex" Zend/zend_alloc.c; \
     grep -q "max_multipart_body_parts" main/main.c; \
     grep -q "body_parts_cnt" main/rfc1867.c; \
-    echo "== 版本号对齐到 7.4.34（与宝塔打包版一致，便于统一巡检）=="; \
-    sed -i 's/#define PHP_VERSION "7\.4\.33"/#define PHP_VERSION "7.4.34"/' main/php_version.h; \
-    grep -E '^#define PHP_(MAJOR|MINOR|RELEASE|EXTRA)_VERSION|^#define PHP_VERSION ' main/php_version.h; \
     echo "== configure =="; \
     ./configure \
         --build="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)" \
@@ -87,6 +84,11 @@ RUN set -eux; \
         --enable-fpm \
         --with-fpm-user=www \
         --with-fpm-group=www; \
+    echo "== 版本号对齐到 7.4.34 =="; \
+    echo "  注意：必须在 configure 之后改。configure 会用预生成的脚本重写 main/php_version.h，"; \
+    echo "  之前放在 configure 前，结果被覆盖回 7.4.33（实测踩过）。"; \
+    sed -i 's/#define PHP_VERSION "7\.4\.33"/#define PHP_VERSION "7.4.34"/' main/php_version.h; \
+    grep -E '^#define PHP_(MAJOR|MINOR|RELEASE|EXTRA)_VERSION|^#define PHP_VERSION ' main/php_version.h; \
     echo "== 编译（用满 runner 全部核心；16GB 内存足以支撑 -j4 峰值）=="; \
     echo "cores=$(nproc)  mem=$(free -m | awk '/Mem:/{print $2}')MB"; \
     make -j"$(nproc)" > /tmp/php-make.log 2>&1 || { echo "MAKE_FAILED"; tail -80 /tmp/php-make.log; exit 1; }; \

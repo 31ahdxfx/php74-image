@@ -116,6 +116,13 @@ jobs:
             echo "::error::镜像 ENV PHP_VERSION=[$ENVV] 与期望 [${PHP_VERSION}] 不一致"
             exit 1
           fi
+          echo "--- 运行时 PHP_VERSION（这才是 php -v 真正显示的）---"
+          RUNV=$(docker run --rm ${IMAGE_NAME}:${PHP_VERSION} php -r 'echo PHP_VERSION;')
+          echo "php -r 'echo PHP_VERSION' = [$RUNV]"
+          if [ "$RUNV" != "${PHP_VERSION}" ]; then
+            echo "::error::运行时 PHP_VERSION=[$RUNV] 与期望 [${PHP_VERSION}] 不一致（php_version.h 可能被 configure 覆盖）"
+            exit 1
+          fi
           echo "--- 扩展清单 ---"
           docker run --rm ${IMAGE_NAME}:${PHP_VERSION} php -m
 
