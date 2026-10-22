@@ -87,8 +87,9 @@ RUN set -eux; \
         --enable-fpm \
         --with-fpm-user=www \
         --with-fpm-group=www; \
-    echo "== 编译（-j1 + nice：本机同时在跑生产，宁可慢也不抢 CPU/内存）=="; \
-    nice -n 19 make -j1 > /tmp/php-make.log 2>&1 || { echo "MAKE_FAILED"; tail -60 /tmp/php-make.log; exit 1; }; \
+    echo "== 编译（用满 runner 全部核心；16GB 内存足以支撑 -j4 峰值）=="; \
+    echo "cores=$(nproc)  mem=$(free -m | awk '/Mem:/{print $2}')MB"; \
+    make -j"$(nproc)" > /tmp/php-make.log 2>&1 || { echo "MAKE_FAILED"; tail -80 /tmp/php-make.log; exit 1; }; \
     tail -5 /tmp/php-make.log; \
     make install; \
     make clean; \
@@ -103,9 +104,12 @@ RUN set -eux; \
         pcntl pdo_mysql soap sockets sysvsem shmop zip
 
 # ---- redis：宝塔 7.4 环境几乎必装，固定 5.3.7（兼容 PHP 7.0–8.2）----
+# phpredis 的 configure 会交互式询问 igbinary/lzf/zstd/msgpack 等可选依赖，
+# 非 TTY 环境下会读 stdin 挂住或报错 —— 用 yes '' 喂空行，全部取默认值(no)。
 RUN set -eux; \
-    pecl install redis-5.3.7; \
+    yes '' | pecl install redis-5.3.7; \
     docker-php-ext-enable redis; \
+    php -m | grep -i '^redis$'; \
     rm -rf /tmp/pear
 
 # ---- 清理解压出来的源码树（保留 php.tar.xz，后续仍可 docker-php-ext-install 补装扩展）----
