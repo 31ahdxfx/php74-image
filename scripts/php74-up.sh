@@ -25,6 +25,9 @@ CONFDIR=/etc/docker/php74
 
 set -u
 
+log()  { echo -e "\033[32m[+]\033[0m $*"; }
+warn() { echo -e "\033[33m[!]\033[0m $*"; }
+
 echo "=================================================="
 echo " 镜像    : $IMG"
 echo " 容器名  : $NAME"
@@ -101,19 +104,40 @@ case "$SOCKDIR" in
     *) EXTRA="-v $SOCKDIR:$SOCKDIR" ;;
 esac
 
-echo "[2/4] 启动容器..."
+# 额外数据目录：站点代码里常引用 /pub、/novel 这类绝对路径，
+# 容器内不存在会直接 file_get_contents 失败（"书籍能列出但点进去打不开"）。
+# 这里自动探测，存在才挂；不存在的会在启动完成后提示。
+echo
+echo "[2/5] 探测额外数据目录..."
+EXTRA_DIRS="${EXTRA_DIRS:-/pub /novel /weblog /data /mnt/data}"
+DATA_MOUNTS=""
+MISSING_DIRS=""
+for d in $EXTRA_DIRS; do
+    if [ -d "$d" ]; then
+        cnt=$(ls -A "$d" 2>/dev/null | wc -l)
+        mountpoint -q "$d" 2>/dev/null && MP="挂载点" || MP="普通目录"
+        DATA_MOUNTS="$DATA_MOUNTS -v $d:$d"
+        printf "   %-12s 存在（%s，%s 项）→ 将挂载\n" "$d" "$MP" "$cnt"
+        [ "$cnt" -eq 0 ] && printf "   %-12s ⚠ 目录为空，挂进去也读不到数据，请确认是否漏挂 NFS\n" ""
+    else
+        MISSING_DIRS="$MISSING_DIRS $d"
+        printf "   %-12s 不存在 → 跳过\n" "$d"
+    fi
+done
+
+echo "[3/5] 启动容器..."
 docker run -d --name "$NAME" --restart=always \
     --network host \
     -v /www/wwwroot:/www/wwwroot \
-    -v /weblog:/weblog \
     -v /tmp:/tmp \
     $EXTRA \
+    $DATA_MOUNTS \
     -v "$CONFDIR/zz-www.conf:/usr/local/etc/php-fpm.d/zz-www.conf:ro" \
     -w /www/wwwroot \
     "$IMG" >/dev/null 2>&1
 
 # ---- 6. 等 8 秒确认稳定（这一步能抓 daemonize 之类的问题）----
-echo "[3/4] 等待 8 秒确认稳定..."
+echo "[4/5] 等待 8 秒确认稳定..."
 STABLE=0
 for i in $(seq 1 16); do
     sleep 0.5
@@ -134,7 +158,7 @@ fi
 echo "   状态: running ✅"
 
 # ---- 7. socket 与自检 ----
-echo "[4/4] 检查 socket 与自检..."
+echo "[5/5] 检查 socket 与自检..."
 if [ ! -S "$SOCK" ]; then
     echo "   [x] socket 未生成: $SOCK"
     docker logs --tail 20 "$NAME" 2>&1
@@ -155,6 +179,12 @@ echo " 启动完成"
 echo "=================================================="
 echo " socket : $SOCK"
 echo " 容器   : $NAME ($(docker inspect -f '{{.State.Status}}' "$NAME"))"
+echo " 挂载   : /www/wwwroot /tmp$DATA_MOUNTS"
+if [ -n "${MISSING_DIRS:-}" ]; then
+    echo
+    warn "以下目录在宿主机上不存在，未挂载：$MISSING_DIRS"
+    warn "  如果站点代码引用了它们，读取会失败，请确认是否需要先创建/挂载"
+fi
 echo
 echo " 要接到 nginx，把对应站点的 fastcgi_pass 改成："
 echo "     fastcgi_pass unix:$SOCK;"
